@@ -1,0 +1,690 @@
+# Load packages
+library(readr)
+library(phyloseq)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggforce)
+library(viridis)
+library(vegan)
+#library(ggvegan)
+library(zCompositions)
+#library(DESeq2)
+#library(ComplexHeatmap)
+library(pheatmap)
+library(tidyr)
+library(stringr)
+library(knitr)
+library(RColorBrewer)
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN  PHYLOSEQ OBJECT CREATION - - - - - - - - - - - 
+
+theme_set(theme_bw())
+
+### Change this to your working drive
+setwd("C:/Users/grace/Downloads/euk lab")
+merged_metagenomes <- import_biom("merged_eukriboFULL_kraken.biom")
+
+
+# Step 1: Extract sample names
+sample_names <- sample_names(merged_metagenomes)
+
+# Step 2: Modify sample names to keep only the text to the left of the first "."
+samnames <- sub("\\..*", "", sample_names)
+
+# Step 3: Update sample names in the OTU table of the phyloseq object
+sample_names(merged_metagenomes) <- samnames
+
+# You may also want to update the sample names in the sample_data slot if needed
+# For example, if your sample data also contains sample names
+sample_data(merged_metagenomes)$Sample <- samnames
+
+
+# ##### subset only _S samples
+ samnames_S <- grep("_S", samnames, value = TRUE)
+ merged_metagenomes_S <- prune_samples(samnames_S, merged_metagenomes)
+
+# ### Cleaning up phyloseq object
+ merged_metagenomes_S@tax_table@.Data <- substring(merged_metagenomes@tax_table@.Data, 4)
+ colnames(merged_metagenomes_S@tax_table@.Data)<- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+ colnames(merged_metagenomes_S@otu_table@.Data)<- samnames_S
+# 
+# 
+# ### Making sample data frame and adding to new phyloseq object
+ sampdf <- read.delim("BIOL 597_Soil analysis real_S.txt", sep = "\t", header = T, stringsAsFactors=FALSE)
+ rownames(sampdf) <- samnames_S
+ ps =  phyloseq(otu_table = merged_metagenomes_S@otu_table, 
+             tax_table = merged_metagenomes_S@tax_table,
+                sample_data(sampdf))
+
+### Cleaning up phyloseq object
+merged_metagenomes@tax_table@.Data <- substring(merged_metagenomes@tax_table@.Data, 4)
+colnames(merged_metagenomes@tax_table@.Data)<- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+colnames(merged_metagenomes@otu_table@.Data)<- samnames
+
+
+### Making sample data frame and adding to new phyloseq object
+sampdf <- data.frame(samnames)
+rownames(sampdf) <- samnames
+ps =  phyloseq(otu_table = merged_metagenomes@otu_table, 
+               tax_table = merged_metagenomes@tax_table,
+               sample_data(sampdf))
+
+ps_rel <- transform_sample_counts(ps, function(x) 100 * x / sum(x))
+
+
+# Filter out the "Chloroplast" order from the dataset
+ps_filtered <- subset_taxa(ps_rel, Kingdom = "Eukaryota")
+
+phylum_names_to_keep <- c("Ascomycota", "Evosea", "Ciliophora", "Chlorophyta", "Euglenozoa", "Apicomplexa", 
+                          "Rhodophyta", "Cercozoa", "Basidiomycota", "Microsporidia", "Bacillariophyta", 
+                          "Foraminifera", "Discosea", "Heterolobosea", "Zoopagomycota", "Mucoromycota", 
+                          "Parabasalia", "Endomyxa", "Chytridiomycota", "Oomycota", "Tubulinea", "Fornicata", 
+                          "Preaxostyla", "Perkinsozoa", "Haptophyta", "Sanchytriomycota", "Nebulidia", 
+                          "Cryptomycota", "Blastocladiomycota", "Picozoa", "Hemimastigophora", 
+                          "Prasinodermophyta", "Olpidiomycota")
+
+ps_filtered <- subset_taxa(ps_filtered, Phylum == phylum_names_to_keep)
+
+
+
+
+# #Agglomerate taxa at the Family level
+ps_phy <- tax_glom(ps_filtered, taxrank = "Phylum")
+ps_cla <- tax_glom(ps_filtered, taxrank = "Class")
+ps_fam <- tax_glom(ps_filtered, taxrank = "Family")
+
+ps <- ps_filtered
+
+
+
+
+
+
+
+#put in excel
+library(phyloseq)
+library(writexl)
+
+# Assuming 'physeq' is your phyloseq object
+
+# Extract OTU table
+otu_table <- as.data.frame(otu_table(ps_phy))
+tax_table <- as.data.frame(tax_table(ps_phy))
+parsed_data <- merge(otu_table, tax_table, by="row.names")
+
+write.table(parsed_data, "phylum_parsed_data.txt", sep="\t", row.names = FALSE, quote = F)
+
+otu_table <- as.data.frame(otu_table(ps_cla))
+tax_table <- as.data.frame(tax_table(ps_cla))
+parsed_data <- merge(otu_table, tax_table, by="row.names")
+
+write.table(parsed_data, "class_parsed_data.txt", sep="\t", row.names = FALSE, quote = F)
+
+otu_table <- as.data.frame(otu_table(ps_fam))
+tax_table <- as.data.frame(tax_table(ps_fam))
+parsed_data <- merge(otu_table, tax_table, by="row.names")
+
+write.table(parsed_data, "family_parsed_data.txt", sep="\t", row.names = FALSE, quote = F)
+
+
+
+# Calculate the column sums
+sums <- colSums(otu_table)
+
+# Create a dataframe with a single row containing the column sums
+sum_df <- as.data.frame(t(sums))
+
+
+
+
+
+
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN ALPHA DIVERSITY INDICES AND PLOTS- - - - - - - - 
+
+
+# Alpha diversity at family 
+tax_levels <- colnames(tax_table(ps))
+ps.pruned<- prune_taxa(taxa_sums(ps) > 0, ps)
+
+# Create the plot
+plot_richness(ps.pruned, x = "Site", measures = c("Shannon", "Simpson"), color = "NULL") +
+  geom_boxplot() +
+  theme_minimal() +  # Using a minimal theme as an example
+  theme(
+    plot.background = element_rect(fill = "white"),  # Set your desired background color here, off white colours are easier on color deficient eyes
+    strip.background = element_blank(),
+    axis.text.x.bottom = element_text(angle = -90),
+    text = element_text(size = 13))
+
+
+# Calculate alpha diversity indices (Shannon and Simpson) at the Family level
+# This code calculates alpha diversity for each sample type and performs statistical tests
+
+# Create a data frame to store alpha diversity data
+alpha_diversity_df <- data.frame(Subset_Names = character(),
+                                 Shannon_Index = numeric(),
+                                 Simpson_Index = numeric(),
+                                 stringsAsFactors = FALSE)
+
+
+sample_types <- unique(sample_data(ps.pruned)$Site)
+
+
+# Loop through each sample type and calculate alpha diversity
+for (sample_type in sample_types) {
+  # Subset the phyloseq object to the current sample type
+  sub_physeq <- subset_samples(ps.pruned, Site == sample_type)
+  
+  # Calculate alpha diversity (Shannon and Simpson indices) for the current sample type
+  alpha_diversity <- estimate_richness(sub_physeq, measures = c("Shannon", "Simpson"))
+  
+  # Add the alpha diversity data to the data frame
+  alpha_diversity_df <- rbind(alpha_diversity_df,
+                              data.frame(Subset_Names = sample_type,
+                                         Shannon_Index = alpha_diversity$Shannon,
+                                         Simpson_Index = alpha_diversity$Simpson))}
+
+# Print the combined alpha diversity data
+print(alpha_diversity_df)
+
+# Perform Kruskal-Wallis tests and pairwise Wilcoxon rank-sum tests
+# This code performs statistical tests to compare alpha diversity among sample types
+
+# Perform Kruskal-Wallis test on Shannon Index
+kruskal.test(Shannon_Index ~ Subset_Names, data = alpha_diversity_df)
+
+# Perform Kruskal-Wallis test on Simpson Index
+kruskal.test(Simpson_Index ~ Subset_Names, data = alpha_diversity_df)
+
+# Perform pairwise Wilcoxon rank-sum tests for Shannon Index
+posthoc_shannon <- pairwise.wilcox.test(alpha_diversity_df$Shannon_Index, alpha_diversity_df$Subset_Names, p.adjust.method = "holm")
+
+# Print the post hoc test results for Shannon Index
+print(posthoc_shannon)
+
+# Perform pairwise Wilcoxon rank-sum tests for Simpson Index
+posthoc_simpson <- pairwise.wilcox.test(alpha_diversity_df$Simpson_Index, alpha_diversity_df$Subset_Names, p.adjust.method = "holm")
+
+# Print the post hoc test results for Simpson Index
+print(posthoc_simpson)
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN BETA DIVERSITY - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+
+# Beta diversity NMDS plot and supporting statistics
+# This code calculates and visualizes the beta diversity using NMDS and associated statistics
+
+
+# Transform the OTU table using centered log-ratio transformation
+otu_z <- cmultRepl(as.matrix(ps_filtered@otu_table), method = "GBM", output = 'p-counts', z.warning = 0.99)
+clr <- function(x) sweep(log(x), 1, rowMeans(log(x)), "-")
+otu_tx <- data.frame(t(clr(t(otu_z))))
+otu_m <- as.matrix(t(otu_tx))
+
+# Perform NMDS analysis on the transformed OTU table
+nmds <- metaMDS(otu_m, distance = "euclidean")
+nmds_scores <- as.data.frame(nmds$points)
+
+# Add samples and label columns and rename column names
+sample_names_samdf <- rownames(sampdf)
+nmds_scores$Label <- sampdf$Site
+nmds_scores$Samples <- sample_names_samdf
+colnames(nmds_scores) <- c("NMDS1", "NMDS2", "Label", "Samples")
+
+# Factorize the Label variable for color mapping
+nmds_scores$Label <- factor(nmds_scores$Label)
+
+# Define a color-blind friendly palette for sample types
+color_palette <- c("Lowland" = "wheat3", "Sedge" = "forestgreen", "Riparian" = "blue")
+
+# Create the NMDS plot using ggplot and ggforce
+# Create a scatter plot with NMDS scores and ellipses for the "Family" data and customize
+
+# Set the data source and initial plot title
+plotted_e <- ggplot(data = nmds_scores) + ggtitle("Vegetation Type") +
+  
+  # Adjust the position of the plot title
+  theme(plot.title = element_text(hjust = 0.5)) +
+  
+  # Add ellipses based on NMDS scores and fill/color according to the 'Label' variable
+  geom_mark_ellipse(aes(x = NMDS1, y = NMDS2, fill = Label, color = Label), expand = unit(0.5, "mm")) +
+  
+  # Add points based on NMDS scores and adjust shape/color based on the 'Label' variable
+  geom_point(aes(x = NMDS1, y = NMDS2, shape = Label, color = Label)) +
+  
+  # Add text labels for points with 'Label' as "Plastic"
+  # geom_text(data = subset(nmds_scores, Label == "Rain"), aes(x = NMDS1, y = NMDS2, label = Samples),
+  #           nudge_x = 0.02, nudge_y = -1, size = 4, color = "black") +
+  
+  # Set the manual fill colors using the defined 'color_palette'
+ # scale_fill_manual(values = color_palette) +
+  
+  # Set the manual color scale using the defined 'color_palette'
+ # scale_color_manual(values = color_palette) +
+  
+  # Set the manual shape scale based on the 'Label' variable values
+ # scale_shape_manual(values = c("Lowland" = 16, "Sedge" = 17, "Riparian" = 18)) +
+  
+  # Use a minimal theme for the plot
+  theme_minimal() +
+  
+  # Customize theme elements like font sizes for legend and axis labels
+  theme(
+    legend.text = element_text(size = 11),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 11)) +
+  
+  # Customize the legend appearance with a specified number of rows
+  guides(fill = guide_legend(nrow = 3))
+
+# Print the NMDS plot 
+print(plotted_e)
+
+
+####### STATS FOR BETA DIVERSITY
+# Perform ANOSIM and PERMANOVA on the entire dataset
+row.names(sampdf) <- sampdf$Sample
+ano <- anosim(t(merged_metagenomes_S@otu_table), sampdf$Site, distance = "euclidean", permutations = 99)
+
+ano
+
+perma <- adonis2(formula = t(merged_metagenomes_S@otu_table) ~ sampdf$Site, permutations = 99, method = "euclidean")
+
+perma
+# Function to perform ANOSIM and PERMANOVA on subsets
+perform_anosim_permanova <- function(data, labels) {
+  result_anosim <- anosim(data, labels, distance = "euclidean", permutations = 99)
+  result_permanova <- adonis2(formula = data ~ labels, permutations = 99, method = "euclidean")
+  return(list(anosim = result_anosim, permanova = result_permanova))}
+
+# Perform ANOSIM and PERMANOVA on different subsets of the data
+subset1_labels <- c("No_Rain", "Rain", "Transition")
+indices_subset1 <- which(sampdf$Rain %in% subset1_labels)
+result_subset1 <- perform_anosim_permanova(otu_m[indices_subset1, ], sampdf$Rain[indices_subset1])
+
+# Perform ANOSIM and PERMANOVA on Subset 2
+subset2_labels <- c("No_Rain", "Rain")  # Replace with the specific labels for subset 2
+indices_subset2 <- which(sampdf$Rain %in% subset2_labels)
+result_subset2 <- perform_anosim_permanova(otu_m[indices_subset2, ], sampdf$Rain[indices_subset2])
+
+subset3_labels <- c("No_Rain", "Transition")  # Replace with the specific labels for subset 2
+indices_subset3 <- which(sampdf$Rain %in% subset3_labels)
+result_subset3 <- perform_anosim_permanova(otu_m[indices_subset3, ], sampdf$Rain[indices_subset3])
+
+subset4_labels <- c("Rain", "Transition")  # Replace with the specific labels for subset 2
+indices_subset4 <- which(sampdf$Rain %in% subset4_labels)
+result_subset4 <- perform_anosim_permanova(otu_m[indices_subset4, ], sampdf$Rain[indices_subset4])
+
+# Create an empty data frame to store the p-values
+p_values_df <- data.frame(
+  Subset = character(),
+  Test = character(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE)
+
+# List of subset label-result pairs
+subset_label_results <- list(
+  subset1_labels = result_subset1,
+  subset2_labels = result_subset2,
+  subset3_labels = result_subset3,
+  subset4_labels = result_subset4)
+
+# Iterate through the list of subset label-result pairs
+for (subset_label in names(subset_label_results)) {
+  result_subset <- subset_label_results[[subset_label]]
+  
+  # Extract p-values from ANOSIM and PERMANOVA results
+  p_value_anosim <- result_subset$anosim$signif
+  p_value_permanova <- result_subset$permanova$`Pr(>F)`[1] # Assuming the first row is the overall p-value
+  
+  # Append the p-values to the data frame
+  p_values_df <- rbind(
+    p_values_df,
+    data.frame(
+      Subset = rep(subset_label, 2),
+      Test = c("ANOSIM", "PERMANOVA"),
+      P_Value = c(p_value_anosim, p_value_permanova),
+      stringsAsFactors = FALSE))}
+
+# Export the p-values data frame as a CSV file, if using as supplemental table
+write.table(p_values_df, "beta-div_p_values_table_final.txt", sep="\t", row.names = FALSE, quote = F)
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# - - - - - - - - - - - - BEGIN CCA Plot- - - - - - - - - - - - - - - 
+
+nmds_scores$Rain.inches <- sampdf$Rain.inches
+nmds_scores$Rain.same.day <- sampdf$Rain.same.day
+nmds_scores$Rain.1.day <- sampdf$Rain.1.day
+nmds_scores$Rain.2.day <- sampdf$Rain.2.day
+
+
+
+######################################### CCA: Manual
+# CCA requires two dataframes:
+# 1st main Data (rows: samples columns: factors[phylum or OTU])
+# 2nd Driver of the dataset ex. any continuous counts (rain.Inches)
+# subset the data to only preserve main data ONLY
+# create a list of colnames bc rmd
+
+# cca_driver <- subset(nmds_scores, select = c("Label", "Rain.same.day"))
+cca_driver <- subset(nmds_scores, select = c("Rain.same.day", "Rain.1.day", "Rain.2.day"))
+
+data_ps <- data.frame(t(ps_filtered@otu_table))
+cca_ps <- cca(data_ps, cca_driver)
+
+
+autoplot(cca_ps, layers = c("sites", "biplot", "centroid"))
+
+cca_ps
+plot_scree(cca_ps)
+
+##
+fort_cca <- fortify(cca_ps)
+fort_cca1 <- subset(fort_cca, score == "sites")
+drivers <- subset(fort_cca, score == "biplot")
+
+gg_soil_cca <- cbind(fort_cca1, subset(sampdf, select = c("Rain")))
+
+
+#
+gg1 <- ggplot(gg_soil_cca) +
+  ggtitle("CCA1 vs CCA2") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_point(aes(x = CCA1, y = CCA2 , color = factor(Rain)))
+gg1
+# Adding vectors
+gg2 <- gg1 + geom_segment(data = drivers, aes(x = 0, y = 0, xend = 3*CCA1, yend = 3*CCA2), arrow = arrow(length = unit(0.1, "cm")), size =0.5) +
+  geom_text(data = drivers, aes(x = 3.3*CCA1, y = 3.3*CCA2, label = label))
+gg2
+
+
+
+
+
+
+# - - - - - - - - - - - - BEGIN SAMPLE TYPE SPECIFIC AND SHARED FAMILIES- - - - 
+
+
+
+### Venn Diagram 
+# Reran lines from earlier to remove the <1% summary
+ps.rel = transform_sample_counts(ps, function(x) x/sum(x)*100)
+ps.melt <- psmelt(ps.rel)
+ps.melt$Family <- as.character(ps.melt$Family)  # Convert Family to character
+
+### Create separate tables for Venn Diagram
+ps.pl <- ps.melt[ps.melt$label == "Plastic", ]
+ps.np <- ps.melt[ps.melt$label == "Non-Plastic", ]
+ps.wc <- ps.melt[ps.melt$label == "Water_Column", ]
+filtered_pl <- ps.pl[ps.pl$Abundance != 0, ]
+filtered_np <- ps.np[ps.np$Abundance != 0, ]
+filtered_wc <- ps.wc[ps.wc$Abundance != 0, ]
+ps.pl_no.wc <- filtered_pl[!(filtered_pl$Family %in% filtered_wc$Family), ]
+ps.pl_unique <- ps.pl_no.wc[!(ps.pl_no.wc$Family %in% filtered_np$Family), ]
+
+# Reduce DFs to list of family names in each sample type
+pl.fams <- setNames(as.data.frame(unique(filtered_pl$Family)), "Family") # 309 fams
+np.fams <- setNames(as.data.frame(unique(filtered_np$Family)), "Family") # 195 fams
+wc.fams <- setNames(as.data.frame(unique(filtered_wc$Family)), "Family") # 139 fams
+
+# Get list of Families shared by all 3 types - 109 fams
+all.shared <- setNames(as.data.frame(Reduce(intersect, list(pl.fams$Family, np.fams$Family, wc.fams$Family))), "Family")
+
+# Get list of Families shared by only plastic and non plastic - 66 fams
+pl.np.shared <- setNames(as.data.frame(setdiff(intersect(pl.fams$Family, np.fams$Family), wc.fams$Family)), "Family")
+
+# Get list of Families shared by only plastic and water column - 17 fams
+pl.wc.shared <- setNames(as.data.frame(setdiff(intersect(pl.fams$Family, wc.fams$Family), np.fams$Family)), "Family")
+
+# Get list of Families shared by only non plastic and water column - 4 fams
+np.wc.shared <- setNames(as.data.frame(setdiff(intersect(np.fams$Family, wc.fams$Family), pl.fams$Family)), "Family")
+
+# Get list of Families specific to plastic - 117 fams
+pl.specific <- setNames(as.data.frame(setdiff(pl.fams$Family, union(np.fams$Family, wc.fams$Family))), "Family")
+
+# Get list of Families specific to non-plastic - 16 fams
+np.specific <- setNames(as.data.frame(setdiff(np.fams$Family, union(pl.fams$Family, wc.fams$Family))), "Family")
+
+# Get list of Families specific to water column - 9 fams
+wc.specific <- setNames(as.data.frame(setdiff(wc.fams$Family, union(pl.fams$Family, np.fams$Family))), "Family")
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN  HEAT MAP - - - - - - - - - - - - - - - - - - -
+
+
+# Factorize the label variable for DESeq2 analysis
+sample_data(ps)$label <- as.factor(sample_data(ps)$label)
+
+# Combine Plastic, Non-Plastic, and Water_Column samples for comparison
+ps.taxa.sub <- subset_samples(ps, label %in% c("Plastic", "Non-Plastic", "Water_Column"))
+
+# Filter out sparse features with > 90% zeros
+ps.taxa.pse.sub <- prune_taxa(rowSums(otu_table(ps.taxa.sub) == 0) < ncol(otu_table(ps.taxa.sub)) * 0.9, ps.taxa.sub)
+ps_ds = phyloseq_to_deseq2(ps.taxa.pse.sub, ~ label)
+
+# Use alternative size factor estimator for genes containing a zero in every sample
+ds <- estimateSizeFactors(ps_ds, type = "poscounts")
+ds = DESeq(ds, test = "Wald", fitType = "parametric")
+alpha = 0.05 
+res = results(ds, alpha = alpha)
+res = res[order(res$padj, na.last = NA), ]
+taxa_sig = rownames(res[1:50, ]) # Select bottom 50 taxa with lowest p.adj values
+
+# Create a new phyloseq object with only the significant taxa
+ps.taxa.rel.sig <- prune_taxa(taxa_sig, ps.rel)
+ps.taxa.rel.sig <- prune_samples(colnames(otu_table(ps.taxa.pse.sub)), ps.taxa.rel.sig)
+
+# Create a matrix of the significant taxa's relative abundances
+matrix <- as.matrix(data.frame(otu_table(ps.taxa.rel.sig)))
+rownames(matrix) <- as.character(tax_table(ps.taxa.rel.sig)[, "Family"])
+metadata_sub <- data.frame(sample_data(ps.taxa.rel.sig))
+
+# Define annotation colors for columns and rows
+annotation_col <- data.frame(
+  `Sample Type` = as.factor(metadata_sub$label),
+  check.names = FALSE)
+
+rownames(annotation_col) <- rownames(metadata_sub)
+
+annotation_row <- data.frame(
+  Order = as.factor(tax_table(ps.taxa.rel.sig)[, "Order"]))
+
+# Make row names unique in the annotation_row data frame
+annotation_row$Order <- factor(annotation_row$Order, levels = unique(annotation_row$Order))
+rownames(annotation_row) <- make.unique(as.character(annotation_row$Order))
+
+# Define annotation colors using named vectors
+num_levels <- length(levels(annotation_row$Order))
+Order_col <- sample(colors(10), num_levels)
+names(Order_col) <- levels(annotation_row$Order)
+ann_colors = list(
+  "Sample Type" = c(Plastic = "tan", `Non-Plastic` = "forestgreen", "Water_Column" = "blue"),
+  Order = Order_col)
+
+
+# Define a custom color scale using the 'viridis' palette
+#customize palette choice (viridis, plasma, cividis, etc.) and palette direction (1 or -1)
+custom_colors <- viridis(length(unique(samdf$label)), option = "viridis", direction = -1)
+
+
+# Create the heatmap using ComplexHeatmap
+ComplexHeatmap::pheatmap(matrix, 
+                         annotation_col = annotation_col, 
+                         annotation_row = annotation_row, 
+                         annotation_colors = ann_colors,
+                         scale = "row",
+                         color = custom_colors,
+                         heatmap_legend_param = list(title = "Standard Deviations From Mean"))
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN TOP 5 FAMILIES IN PLASTIC SAMPLES - - - - - - - - - - - - - - - - - - -
+
+
+
+# extract top 5 families in each plastic sample
+
+Family_All_top6 <- ps.melt_sum %>% group_by(Sample) %>% arrange(desc(Abundance)) %>%
+  slice_head(n = 6) %>% ungroup()
+
+Family_All_Data_subsetP_top6 <- Family_All_top6 %>% filter(label == "Plastic")
+
+# Remove the "< 1%" 'familiy' 
+Family_All_Data_subsetP_top5 <- Family_All_Data_subsetP_top6 %>% filter(Family != "< 1%")
+
+# Store data for supplementary tables
+write.table(Family_All_Data_subsetP_top5, "Family_All_Data_subsetP_top5.txt", sep="\t", row.names = FALSE, quote = F)
+write.table(Family_All_top6, "Family_All_top6.txt", sep="\t", row.names = FALSE, quote = F)
+
+
+# Create a bubble plot with cividis color palette
+
+ggplot(Family_All_Data_subsetP_top5, aes(x = Family, y = Sample, size = Abundance, color = Abundance)) +
+  geom_point() +
+  scale_size(range = c(1, 20)) +
+  scale_color_viridis(option = "cividis") + # can change color palette 
+  labs(
+    title = "Prevalence and Abundance of Non-specific Families in Plastics",
+    x = "Family",
+    y = "Sample",
+    size = "Abundance",
+    color = "Abundance"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    panel.background = element_rect(fill = "antiquewhite2"),
+    text = element_text(size = 15),
+    panel.grid.major.y = element_line(
+      color = "antiquewhite4",   # Set horizontal grid line color
+      linewidth = 0.15,           # Set horizontal grid line thickness
+      linetype = "dotted"),      # Set horizontal grid line type (solid, dashed, etc.)
+    panel.grid.major.x = element_blank())#,  # Hide vertical grid lines
+#panel.grid.minor = element_blank())
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN % PLASTIC SPECIFIC FAMILIES, IN EACH SAMPLE - - 
+
+
+
+# Creating a phyloseq with only plastic samples and ONLY families specific to plastic samples
+# Agglomerate taxa at the Family level
+ps.pl_unique$Family <- as.character(ps.pl_unique$Family)  # Convert Family to character
+
+# Change all Family names to "< .15%" when abundance is less than .15%
+# can be changed, we set to .15% for aesthetic purposes
+ps.pl_unique$Family[ps.pl_unique$Abundance < .15] <- "< .15%"
+
+# Summarize abundances by Sample, label, and Family
+ps.melt_sum_ps.pl_unique <- ps.pl_unique %>% group_by(Sample, label, Family) %>%
+  summarise(Abundance=sum(Abundance))
+
+# library(ggplot2)
+
+ggplot(ps.melt_sum_ps.pl_unique, aes(x = Sample, y = Abundance, fill = Family)) + 
+  geom_bar(stat = "identity") + 
+  scale_fill_viridis_d(option = "cividis", begin = 0.1, end = .95) +
+  labs(title = "Relative Abundance Compositions of Plastic Specific Families", x = "", y = "%") +
+  facet_wrap(~label, scales = "free_x", nrow = 1) +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90),
+        legend.text = element_text(size = 12),
+        axis.text = element_text(size = 13),
+        strip.text = element_text(size = 13)) +
+  guides(fill = guide_legend(nrow = 24)) +
+  scale_y_continuous(breaks = seq(0, 14, by = 1), expand = c(0, 0),
+                     limits = c(0, 14))  # Set the y-axis limits to include the maximum value (12 in this case)
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - BEGIN TOP 5 PLASTIC SPECIFIC FAMILIES IN PLASTIC SAMPLES -
+
+
+
+Family_Plastics_top6 <- ps.melt_sum_ps.pl_unique %>% group_by(Sample) %>%
+  arrange(desc(Abundance)) %>% slice_head(n = 6) %>% ungroup()
+
+Family_PlasticSpecific_top5 <- Family_Plastics_top6 %>% filter(Family != "< .15%")
+
+write.table(Family_Plastics_top6, "Family_PlasticSpecific_top5.txt", sep="\t", row.names = FALSE, quote = F)
+
+
+#Plot bubble plot 
+
+ggplot(Family_PlasticSpecific_top5, aes(x = Family, y = Sample, size = Abundance, color = Abundance)) +
+  geom_point() +
+  scale_size(range = c(1, 20)) +
+  scale_color_viridis(option = "cividis") +
+  labs(
+    title = "Prevalence and Abundance of Plastic specific Families",
+    x = "Family",
+    y = "Sample",
+    size = "Abundance",
+    color = "Abundance"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    panel.background = element_rect(fill = "antiquewhite2"),
+    text = element_text(size = 15),
+    panel.grid.major.y = element_line(
+      color = "antiquewhite4",   # Set horizontal grid line color
+      linewidth = 0.1,           # Set horizontal grid line thickness
+      linetype = "dotted"),      # Set horizontal grid line type (solid, dashed, etc.)
+    panel.grid.major.x = element_blank())#,  # Hide vertical grid lines
+    #panel.grid.minor = element_blank())    # Hide minor grid lines
+
+
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - BEGIN PACKAGE CITATION - OPTIONAL - - - - - - - - - - - - - - - - - -
+
+
+  
+# The following code was used to simplify citations by creating a file 
+# to be imported into Zotero
+# Generate a BibTeX bibliography file containing package citations
+# Load the knitr package to use the write_bib function
+knitr::write_bib(c(.packages(), "bookdown"), "packages.bib")
+
+# Get a vector of names of all currently loaded packages
+loaded_packages <- .packages()
+
+# Add "bookdown" to the vector of loaded packages
+loaded_packages <- c(loaded_packages, "bookdown")
+
+# Specify the output BibTeX file name
+output_file <- "packages.bib"
+
+# Use the write_bib function to create the BibTeX file
+write_bib(packages = loaded_packages, file = output_file)
+  
+  
+
+# - - END - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
